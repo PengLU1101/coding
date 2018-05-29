@@ -157,28 +157,46 @@ def add_token2idx_list(data_list, mappings):
 
     return data_list
 
+def build_data_list(corp_dir):
+    fps = glob.glob(corp_dir + "*.fina")
+    data_list = []
+
+    for fp in tqdm(fps):
+        doc_summs_dict = read_file(fp)
+        data_list.append(doc_summs_dict)
+
+    return data_list
+
 def create_pkl(corp_dir, pkl_path, path_emb, dim=300, unk_frequence=50):
     print("Reading raw files...")
-    if os.path.isfile(pkl_path):
+    if os.path.isfile(pkl_path+"train.pkl"):
         file_name = os.path.split(pkl_path)[1]
         print("%s file exists." %file_name)
     else:
         corpus = {}
-        fps = glob.glob(corp_dir + "*.fina")
-        data_list = []
+        str_list = ["train", "val", "test"]
+        data_lists = []
+        for item in str_list:
+            corp_path = corp_dir + item
+            data_list = build_data_list(corp_path)
+            data_lists.append(data_list)
 
-        for fp in tqdm(fps):
-            doc_summs_dict = read_file(fp)
-            data_list.append(doc_summs_dict)
-
-        mappings = create_mapppings(data_list)
+        mappings = create_mapppings(data_lists[0]+data_lists[1]+data_lists[2])
         mappings, embeddings = build_emb_matrix(path_emb, mappings, dim, unk_frequence)
-        data_list = add_token2idx_list(data_list, mappings)
+        train_data_list = add_token2idx_list(data_lists[0], mappings)
+        val_data_list = add_token2idx_list(data_lists[1], mappings)
+        test_data_list = add_token2idx_list(data_lists[2], mappings)
         
-        corpus = {"mappings": mappings,
-                  "data_list": data_list,
-                  "embeddings": embeddings}
-        save_pkl(pkl_path, corpus)
+        corpus_train = {"mappings": mappings,
+                        "data_list": train_data_list}
+        corpus_val = {"mappings": mappings,
+                        "data_list": val_data_list}
+        corpus_test = {"mappings": mappings,
+                        "data_list": test_data_list}
+        save_pkl(pkl_path+"train.pkl", corpus_train)
+        save_pkl(pkl_path+"val.pkl", corpus_val)
+        save_pkl(pkl_path+"test.pkl", corpus_test)
+        save_pkl(pkl_path+"embeddings.pkl", embeddings)
 
 def save_pkl(path, corpus):
     path_ = os.path.split(path)[0]
@@ -196,10 +214,10 @@ def read_pkl(path):
 
 def test():
     dir_path = "./data/raw/"
-    save_path = "./data/pkl/data.pkl"
+    save_path = "./data/pkl/"
     path_emb = "/u/lupeng/Project/code/vqvae_kb/.vector_cache/glove.42B.300d.txt"
     create_pkl(dir_path, save_path, path_emb)
-    corpus = read_pkl(save_path)
+    corpus = read_pkl(save_path+"train.pkl")
     print(type(corpus))
     print(len(corpus["mappings"]["token_frq_dict"]))
 

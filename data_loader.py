@@ -2,7 +2,10 @@ import nltk
 import torch
 import torch.utils.data as data
 import pickle
+import numpy as np
+from torch.utils.data.sampler import SubsetRandomSampler
 from preprocess import read_pkl
+
 
 
 class Dataset(data.Dataset):
@@ -76,6 +79,43 @@ def collate_fn(data):
     tgt_seqs, tgt_mask_w, tgt_mask_s = merge(tgt_seqs)
 
     return src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s
+def split_data_loader(pkl_path, batch_size, val_num, test_num):
+    ## define our indices -- our dataset has 9 elements and we want a 8:4 split
+    mydset = Dataset(pkl_path)
+    num_train = len(mydset)
+    indices = list(range(num_train))
+
+    # Random, non-contiguous split
+    np.random.seed(123321)
+    valandtest_idx = np.random.choice(indices, size=val_num+test_num, replace=False)
+    train_idx = list(set(indices) - set(valandtest_idx[: val_num]))
+    val_idx = list(set(valandtest_idx[: val_num]))
+    test_idx = list(set(valandtest_idx[val_num:]))
+
+    # Contiguous split
+    # train_idx, validation_idx = indices[split:], indices[:split]
+
+    ## define our samplers -- we use a SubsetRandomSampler because it will return
+    ## a random subset of the split defined by the given indices without replaf
+    train_sampler = SubsetRandomSampler(train_idx)
+    validation_sampler = SubsetRandomSampler(val_idx)
+    test_sampler = SubsetRandomSampler(test_idx)
+
+    train_loader = torch.utils.data.DataLoader(mydset, 
+                                               batch_size=batch_size,
+                                               collate_fn=collate_fn,
+                                               sampler=train_sampler)
+
+    val_loader = torch.utils.data.DataLoader(mydset, 
+                                             batch_size=batch_size,
+                                             collate_fn=collate_fn, 
+                                             sampler=validation_sampler)
+    test_loader = torch.utils.data.DataLoader(mydset, 
+                                              batch_size=batch_size, 
+                                              collate_fn=collate_fn,
+                                              sampler=test_sampler)
+
+    return train_loader, val_loader, test_loader
 
 
 def get_loader(pkl_path, batch_size=1):
@@ -103,10 +143,12 @@ def get_loader(pkl_path, batch_size=1):
 
 def test():
     pkl_path = "./data/pkl/data.pkl"
-    data_loader = get_loader(pkl_path)
-    data_iter = iter(data_loader)
-    src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = next(data_iter)
-    print(src_seqs.size())
+    a, b, c = split_data_loader(pkl_path, 1, val_num= 10, test_num=30)
+    print(len(a))
+    print(len(b))
+    print("OK")
+    #src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = next(data_iter)
+    #print(src_seqs.size())
 
 if __name__ == '__main__':
     test()

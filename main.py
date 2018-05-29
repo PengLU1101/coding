@@ -22,8 +22,11 @@ from argsuse import *
 USE_CUDA = torch.cuda.is_available()
 
 n_voc = len(data_loader.Dataset(args.pkl_path).token2id)
-train_loader = data_loader.get_loader(args.pkl_path, args.batch_size)
-val_loader = data_loader.get_loader(args.pkl_path, 1)
+train_loader = data_loader.get_loader(args.pkl_path+"train.pkl", args.batch_size)
+val_loader = data_loader.get_loader(args.pkl_path+"val.pkl", 1)
+test_loader = data_loader.get_loader(args.pkl_path+"test.pkl", 1)
+weight = preprocess.read_pkl(args.pkl_path+"embeddings.pkl")
+
 
 
 
@@ -32,6 +35,7 @@ def main():
     model = Model.build_model(args.d_emb, args.d_hid, args.n_layers, args.dropout, n_voc)
     params = model.parameters()
     model_optim = optim_custorm.NoamOpt(args.d_hid, args.factor, args.warm, torch.optim.Adam(params, lr=0, betas=(0.9, 0.98), eps=1e-9, weight_decay=args.L2))
+    model.embeddings.apply_weights(weight)
     print(model)
     if args.mode == "train":
         print("Begin training...")
