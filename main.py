@@ -21,7 +21,7 @@ import loss_custorm
 from argsuse import *
 USE_CUDA = torch.cuda.is_available()
 
-n_voc = len(data_loader.Dataset(args.pkl_path).token2id)
+n_voc = len(data_loader.Dataset(args.pkl_path+"train.pkl").token2id)
 train_loader = data_loader.get_loader(args.pkl_path+"train.pkl", args.batch_size)
 val_loader = data_loader.get_loader(args.pkl_path+"val.pkl", 1)
 test_loader = data_loader.get_loader(args.pkl_path+"test.pkl", 1)
@@ -32,7 +32,7 @@ weight = preprocess.read_pkl(args.pkl_path+"embeddings.pkl")
 
 def main():
     critorion = loss_custorm.loss_fuc(nn.NLLLoss, ignore_index=0)
-    model = Model.build_model(args.d_emb, args.d_hid, args.n_layers, args.dropout, n_voc)
+    model = Model.build_model(args.d_emb, args.d_hid, args.n_layers, args.dropout, n_voc, args.beam_num)
     params = model.parameters()
     model_optim = optim_custorm.NoamOpt(args.d_hid, args.factor, args.warm, torch.optim.Adam(params, lr=0, betas=(0.9, 0.98), eps=1e-9, weight_decay=args.L2))
     model.embeddings.apply_weights(weight)
@@ -50,7 +50,7 @@ def main():
                 Model.save_model(args.model_path, model)
     else:
         model = Model.read_model(args.model_path, model)
-        pass
+        save_hyp = pridict()
 
 
 def wrap_variable(*args):
@@ -85,6 +85,16 @@ def infer(model, critorion):
         loss = model(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         total_loss += loss.detach()
     return total_loss/len(val_loader)
+
+def pridict(model, critorion):
+    total_loss = 0
+    for i, data in enumerate(val_loader):
+        src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = data
+        src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = wrap_variable(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
+        save_hyp = model.beam_predict(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
+        total_loss += loss.detach()
+    return total_loss/len(val_loader)
+    ############################333
 
 def eval_rouge(file):
     pass #to do
