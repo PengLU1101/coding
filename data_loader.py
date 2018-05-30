@@ -141,6 +141,8 @@ def get_loader(pkl_path, batch_size=1):
 
     return data_loader
 
+def ok():
+    pass
 def test():
     pkl_path = "./data/pkl/data.pkl"
     a, b, c = split_data_loader(pkl_path, 1, val_num= 10, test_num=30)
