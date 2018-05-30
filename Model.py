@@ -78,6 +78,7 @@ class Sent_Encoder(nn.Module):
             hid_doc:(FloatTensor) Batch x 1 x d_hid
         """
         batch_size, n_sent, d_hid = inputs.size()
+        inputs = inputs * mask.unsqueeze(0)
 
         index, length = Cal_index(mask)
         inputs_indexed = torch.index_select(inputs, 0, index)
@@ -317,7 +318,8 @@ def build_model(d_emb, d_hid, n_layers, dropout, n_voc, beam_num=5):
         model = model.cuda()
     return model
 
-
+def ok():
+    pass
 
 def test():
     inputs = Variable(torch.eye(12, 5).view(3, 4, -1).long())

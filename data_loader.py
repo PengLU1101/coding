@@ -58,6 +58,8 @@ def collate_fn(data):
         padded_seqs = torch.zeros(len(sequences), max(num_sents), max_length_seq).long()
         mask_w = torch.zeros(len(sequences), max(num_sents), max_length_seq).long()
         mask_s = torch.zeros(len(sequences), max(num_sents)).long()
+        padded_seqs[:, :, 0] = 3
+        mask_w[:, :, 0] = 1
         for i, sent in enumerate(sequences):
             end = num_sents[i]
             mask_s[i, :end] = 1
