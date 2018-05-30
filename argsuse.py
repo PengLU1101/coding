@@ -3,7 +3,7 @@ parser = argparse.ArgumentParser(description='H_summary')
 parser.add_argument('--gpu', type=str, default='20', help='# of machine')
 parser.add_argument('--mode', type=str, default='train', help='mode')
 parser.add_argument('--model_path', type=str, default='./models/', help='model path')
-parser.add_argument('--pkl_path', type=str, default='./data/pkl/data.pkl', help='pkl file path')
+parser.add_argument('--pkl_path', type=str, default='./data/pkl/', help='pkl file path')
 
 
 parser.add_argument('--L2', type=float, default=0, help='weight decay')
@@ -13,6 +13,8 @@ parser.add_argument('--print_every', type=int, default=10, help='print_every')
 
 
 parser.add_argument('--batch_size', type=int, default=1, help='batch_size')
+parser.add_argument('--beam_num', type=int, default=5, help='beam num')
+
 parser.add_argument('--factor', type=int, default=1, help='factor of optim')
 parser.add_argument('--warm', type=int, default=1000, help='num of warm steps')
 

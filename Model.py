@@ -11,6 +11,7 @@ import random
 
 from Layer.RNN_Layer import *
 from Layer.Embedding_Layer import *
+import basic_beam
 
 teacher_forcing_ratio = 0.
 Max_Length_Doc = 10
@@ -157,7 +158,7 @@ class Classifier(nn.Module):
 class EncoderDecoder(nn.Module):
     def __init__(self, w_encoder, s_encoder, 
                  w_decoder, s_decoder,
-                 embeddings, classifier):
+                 embeddings, classifier, beam_num):
         super(EncoderDecoder, self).__init__()
         self.w_encoder = w_encoder
         self.s_encoder = s_encoder
@@ -165,12 +166,18 @@ class EncoderDecoder(nn.Module):
         self.s_decoder = s_decoder
         self.embeddings = embeddings
         self.classifier = classifier
+        self.beam_num = beam_num
         #self.cal_loss = loss_custorm.loss_fuc(nn.NLLLoss, ignore_index=0)
         self.cal_loss = nn.NLLLoss(ignore_index=0)
 
     def forward(self, srcs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s):
         hid_doc, hid_sent = self.encode(srcs, src_mask_w, src_mask_s)
         return self.decode(tgt_seqs, tgt_mask_w, hid_doc, hid_sent)
+
+    def beam_predict(self, srcs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s):
+        hid_doc, hid_sent = self.encode(srcs, src_mask_w, src_mask_s)
+        return self.beam_decode(tgt_seqs,
+                hid_doc, hid_sent, self.beam_num)
 
     def encode(self, inputs, mask_w, mask_s):
         """
@@ -256,13 +263,15 @@ class EncoderDecoder(nn.Module):
         return total_loss
     def beam_decode(self, tgt_seqs,
                 enc_hid_doc, enc_hid_sent, beam_num):
+        save_hyp = []
         for idx_s in range(Max_Length_Doc):#
             #word_state = Decode_State()
             if idx_s == 0:
                 dec_hid_sent = self.s_decoder.init_hid(batch_size)#
                 dec_out_sent = enc_hid_doc
             dec_out_sent, dec_hid_sent = self.s_decoder(dec_out_sent, dec_hid_sent)
-            for idx_w in range(Max_Length_Doc):
+            beams = basic_beam.beam(beam_num)
+            for idx_w in range(Max_Length_sent):
                 gen_word_list = []
                 mask_list = []
                 if idx_w == 0:
@@ -271,27 +280,28 @@ class EncoderDecoder(nn.Module):
                     if USE_CUDA:
                         tmp = tmp.cuda()
                     tgts_input = self.embeddings(tmp)
-                    dec_out_word, dec_hid_word = self.w_decoder(tgts_inpdec_hid_word)
-                    out = self.classifier(dec_out_word).squeeze(1)#batch x num_voc
-                    score, idx = torch.topk(out, beam_num, -1)
-                    generate_word = idx.detach().long()
-                    mask = torch.gt(generate_word, 0.0).long()
-                    gen_word_list.append(generate_word)
-                    mask_list.append(mask)
-                    tgts_input = self.embeddings(generate_word)
-                    if generate_word.data.cpu().numpy() == 3: # id2token[3] = "<eos>"
-                        break
+                    
+                dec_out_word, dec_hid_word = self.w_decoder(tgts_inpdec_hid_word)
+                out = self.classifier(dec_out_word).squeeze(1)#batch x num_voc
+                generate_word, prev_idx, done_flag = beams.advance(out.detach().data) # beam_num x 1
+                if done_flag:
+                    break
+                generate_word = Variable(generate_word).cuda() if USE_CUDA else Variable(generate_word)
+                prev_idx = Variable(prev_idx).cuda() if USE_CUDA else Variable(prev_idx)
+                tgts_input = self.embeddings(generate_word)
+                dec_hid_sent = torch.index_select(dec_hid_sent, 0, prev_idx)
 
-                generate_sent = self.embeddings(torch.cat(gen_word_list, dim=1))
-                mask_w = torch.cat(mask_list, dim=1)
-                dec_out_sent = self.w_encoder(generate_sent.unsqueeze(1), mask_w)
+            hyp = beams.get_hyp()
+            save_hyp += hyp.view(-1).tolist()
+            hyp = Variable(hyp).cuda() if USE_CUDA else Variable(hyp)
+            generate_sent = self.embeddings(hyp)
+            mask_w = torch.gt(hyp, 0).long()
+
+            dec_out_sent = self.w_encoder(generate_sent.unsqueeze(1), mask_w)
+        return save_hyp
 
 
-class Decode_State():
-    def __init__(self):
-        self.end_flag = False
-
-def build_model(d_emb, d_hid, n_layers, dropout, n_voc):
+def build_model(d_emb, d_hid, n_layers, dropout, n_voc, beam_num=5):
     print("Building model...")
     rnn = GRU_Layer(d_emb, d_hid, n_layers, dropout, bidirectional=True)
     rnn_ = GRU_Layer(d_hid, d_hid, n_layers, dropout, bidirectional=True)
@@ -302,7 +312,7 @@ def build_model(d_emb, d_hid, n_layers, dropout, n_voc):
     s_decoder = Sent_Decoder(copy.deepcopy(rnn_inner))
     classifier = Classifier(d_hid, n_voc)
     embeddings = Embedding_Layer(n_voc, d_emb)
-    model = EncoderDecoder(w_encoder, s_encoder, w_decoder, s_decoder, embeddings, classifier)
+    model = EncoderDecoder(w_encoder, s_encoder, w_decoder, s_decoder, embeddings, classifier, beam_num)
     if USE_CUDA:
         model = model.cuda()
     return model

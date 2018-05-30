@@ -88,14 +88,25 @@ def infer(model, critorion):
 
 def pridict(model, critorion):
     summ_list = []
-    for i, data in enumerate(val_loader):
+    for i, data in enumerate(test_loader):
         src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = data
         src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = wrap_variable(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         save_hyp = model.beam_predict(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         summ_list.append(save_hyp)
+    generate_summ(summ_list)
     rouge = eval_rouge()#####
     return rouge
 
+def generate_summ(summ_list, tgt_seqs):
+    id2token = data_loader.Dataset(args.pkl_path+"train.pkl").id2token
+    for idxlist in summ_list:
+        summ = [id2token[x] if x != 0 for x in idxlist]
+    for idxlists in tgt_seqs:
+        tgt_summ = []
+        for idxlist in idxlists:
+            summ = [id2token[x] if x != 0 for x in idxlist]
+            tgt_summ += summ
+    ####to do
 
 def eval_rouge(file):
     pass #to do
