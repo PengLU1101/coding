@@ -174,7 +174,7 @@ def create_pkl(corp_dir, pkl_path, path_emb, dim=300, unk_frequence=50):
         print("%s file exists." %file_name)
     else:
         corpus = {}
-        str_list = ["train", "val", "test"]
+        str_list = ["train/", "val/", "test/"]
         data_lists = []
         for item in str_list:
             corp_path = corp_dir + item
