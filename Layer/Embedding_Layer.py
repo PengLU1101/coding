@@ -32,7 +32,10 @@ class Embedding_Layer(nn.Module):
         return embeds 
     def apply_weights(self, weights, fine_tune_flag=False):
         if isinstance(weights, np.array):
-            self.lut.weight.data.copy_ (torch.from_numpy(weights))
+            w = torch.from_numpy(weights)
+            if w.size(0) == 1:
+                w.squeeze(0)
+            self.lut.weight.data.copy_ (w)
         else:
             pass
             #self.lut.weight
