@@ -87,14 +87,15 @@ def infer(model, critorion):
     return total_loss/len(val_loader)
 
 def pridict(model, critorion):
-    total_loss = 0
+    summ_list = []
     for i, data in enumerate(val_loader):
         src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = data
         src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = wrap_variable(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         save_hyp = model.beam_predict(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
-        total_loss += loss.detach()
-    return total_loss/len(val_loader)
-    ############################333
+        summ_list.append(save_hyp)
+    rouge = eval_rouge()#####
+    return rouge
+
 
 def eval_rouge(file):
     pass #to do
