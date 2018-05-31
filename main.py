@@ -19,6 +19,7 @@ import Model
 import optim_custorm
 import loss_custorm
 from argsuse import *
+import preprocess
 USE_CUDA = torch.cuda.is_available()
 
 n_voc = len(data_loader.Dataset(args.pkl_path+"train.pkl").token2id)
@@ -71,7 +72,7 @@ def run_epoch(model, critorion, model_optim, epoch_idx):
         total_loss += loss.detach()
         if i % args.print_every == 0 and i != 0:
             using_time = time.time() - start_time_epoch
-            print('| ep %2d | %4d/%5d btcs | ms/btc %4.4f | loss %5.7f | ppl %4.4f' %(epoch_idx+1, i, len(train_loader), using_time * 1000 / (args.print_every), total_loss/args.print_every, math.exp(total_loss/args.print_every)))
+            print('| ep %2d | %4d/%5d btcs | ms/btc %4.4f | loss %5.7f |' %(epoch_idx+1, i, len(train_loader), using_time * 1000 / (args.print_every), total_loss/args.print_every))
             total_loss = 0
             start_time_epoch = time.time()
     val_loss = infer(model, critorion)
@@ -100,11 +101,11 @@ def pridict(model, critorion):
 def generate_summ(summ_list, tgt_seqs):
     id2token = data_loader.Dataset(args.pkl_path+"train.pkl").id2token
     for idxlist in summ_list:
-        summ = [id2token[x] if x != 0 for x in idxlist]
+        summ = [id2token[x] for x in idxlist if x != 0]
     for idxlists in tgt_seqs:
         tgt_summ = []
         for idxlist in idxlists:
-            summ = [id2token[x] if x != 0 for x in idxlist]
+            summ = [id2token[x] for x in idxlist if x != 0]
             tgt_summ += summ
     ####to do
 

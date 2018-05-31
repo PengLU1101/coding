@@ -31,7 +31,7 @@ class Embedding_Layer(nn.Module):
             embeds = self.lut(x) * math.sqrt(self.d_emb) if norm_flag else self.lut(x)
         return embeds 
     def apply_weights(self, weights, fine_tune_flag=False):
-        if isinstance(weights, np.array):
+        if isinstance(weights, np.ndarray):
             w = torch.from_numpy(weights)
             if w.size(0) == 1:
                 w.squeeze(0)

@@ -213,7 +213,7 @@ def read_pkl(path):
 
 
 def test():
-    dir_path = "./data/raw/"
+    dir_path = "./data/"
     save_path = "./data/pkl/"
     path_emb = "/u/lupeng/Project/code/vqvae_kb/.vector_cache/glove.42B.300d.txt"
     create_pkl(dir_path, save_path, path_emb)

@@ -78,7 +78,7 @@ class Sent_Encoder(nn.Module):
             hid_doc:(FloatTensor) Batch x 1 x d_hid
         """
         batch_size, n_sent, d_hid = inputs.size()
-        inputs = inputs * mask.unsqueeze(0)
+        inputs = inputs * mask.unsqueeze(-1).float()
 
         index, length = Cal_index(mask)
         inputs_indexed = torch.index_select(inputs, 0, index)
@@ -96,7 +96,7 @@ class Sent_Decoder(nn.Module):
 
     def _forward(self, hid_doc, hid_sent_dec):
         return self.decode(hid_doc, hid_sent_dec)
-    def forward(self, hid_doc, hid_sent_dec):
+    def forward(self, hid_sent_dec, hid_doc):
         """
         Args:
             hid_doc: [FloatTensor] batch x 1 x d_hid
@@ -107,7 +107,9 @@ class Sent_Decoder(nn.Module):
         """
         batch_size, _, d_hid = hid_doc.size()
         hid_in = hid_doc
-        out, hid_sent_dec = self.rnn(hid_in, hid_sent_dec.transpose(1, 0))
+        print(hid_in.size())
+        print(hid_sent_dec.size())
+        out, hid_sent_dec = self.rnn(hid_sent_dec, hid_in.transpose(1, 0))
         return out, hid_sent_dec
     def init_hid(self, batch_size):
         hid_sent_dec = Variable(torch.zeros(batch_size, 1, self.rnn.d_hid))
@@ -205,11 +207,12 @@ class EncoderDecoder(nn.Module):
         for idx_s in range(n_sent):#
             #word_state = Decode_State()
             if idx_s == 0:
-                tmp = Variable(torch.LongTensor([4])).unsqueeze(0)
+                tmp = Variable(torch.LongTensor([[4]]*batch_size))
                 if USE_CUDA:
                     tmp = tmp.cuda()
                 
                 dec_out_sent = self.embeddings(tmp)
+
                 dec_hid_sent = enc_hid_doc
             dec_out_sent, dec_hid_sent = self.s_decoder(dec_out_sent, dec_hid_sent)
 
@@ -255,7 +258,7 @@ class EncoderDecoder(nn.Module):
                     gen_word_list.append(generate_word)
                     mask_list.append(mask)
                     tgts_input = self.embeddings(generate_word)
-                    if generate_word.data.cpu().numpy() == 3: # id2token[3] = "<eos>"
+                    if all(generate_word.data.cpu().numpy()) == 3: # id2token[3] = "<eos>"
                         break
 
                 generate_sent = self.embeddings(torch.cat(gen_word_list, dim=1))
