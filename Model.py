@@ -96,7 +96,7 @@ class Sent_Decoder(nn.Module):
 
     def _forward(self, hid_doc, hid_sent_dec):
         return self.decode(hid_doc, hid_sent_dec)
-    def forward(self, hid_sent_dec, hid_doc):
+    def forward(self, sent_input, hid_doc):
         """
         Args:
             hid_doc: [FloatTensor] batch x 1 x d_hid
@@ -106,10 +106,8 @@ class Sent_Decoder(nn.Module):
             h: [FloatTensor] batch x 1 x d_hid
         """
         batch_size, _, d_hid = hid_doc.size()
-        hid_in = hid_doc
-        print(hid_in.size())
-        print(hid_sent_dec.size())
-        out, hid_sent_dec = self.rnn(hid_sent_dec, hid_in.transpose(1, 0))
+        hid_sent_dec = hid_doc.transpose(1, 0)
+        out, hid_sent_dec = self.rnn(sent_input, hid_sent_dec)
         return out, hid_sent_dec
     def init_hid(self, batch_size):
         hid_sent_dec = Variable(torch.zeros(batch_size, 1, self.rnn.d_hid))
@@ -129,7 +127,7 @@ class Word_Decoder(nn.Module):
     def decode(self, tgts, hid_word_dec):
         """
         Args:
-            hid_sent:[FloatTensor] batch x 1 x d_hid
+            tgts:[FloatTensor] batch x 1 x d_hid
             hid_word_dec:[FloatTensor] batch x 1 x d_emb
         Outs:
             out: [FloatTensor] batch x 1 x d_hid
@@ -137,7 +135,7 @@ class Word_Decoder(nn.Module):
         """
         batch_size, _, d_hid = tgts.size()
         h = hid_word_dec.transpose(1, 0)
-        out, h = self.rnn(hid_word_dec, h)
+        out, h = self.rnn(tgts, h)
         return out, h
     def init_hid(self, batch_size):
         hid_word_dec = Variable(torch.zeros(batch_size, 1, self.rnn.d_hid))
@@ -223,7 +221,7 @@ class EncoderDecoder(nn.Module):
                     mask_list = []
                     if idx_w == 0:
                         dec_hid_word = dec_hid_sent
-                        tmp = Variable(torch.LongTensor([2])).unsqueeze(0)
+                        tmp = Variable(torch.LongTensor([[2]]*batch_size))
                         if USE_CUDA:
                             tmp = tmp.cuda()
                         tgts_input = self.embeddings(tmp)
@@ -243,7 +241,7 @@ class EncoderDecoder(nn.Module):
                     mask_list = []
                     if idx_w == 0:
                         dec_hid_word = dec_hid_sent
-                        tmp = Variable(torch.LongTensor([2])).unsqueeze(0)
+                        tmp = Variable(torch.LongTensor([[2]]*batch_size))
                         if USE_CUDA:
                             tmp = tmp.cuda()
                         tgts_input = self.embeddings(tmp)
