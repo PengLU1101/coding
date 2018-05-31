@@ -49,9 +49,12 @@ def main():
             print('-' * 70)
             if not best_loss or best_loss > val_loss:
                 Model.save_model(args.model_path, model)
+
+            if epoch_idx % 5 == 0 or not epoch_idx:
+                predict(model)
     else:
         model = Model.read_model(args.model_path, model)
-        save_hyp = pridict()
+        save_hyp = pridict(model)
 
 
 def wrap_variable(*args):
@@ -62,7 +65,7 @@ def run_epoch(model, critorion, model_optim, epoch_idx):
     total_loss = 0
     start_time_epoch = time.time()
     for i, data in enumerate(train_loader):
-        src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = data
+        src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s, trg_raw = data
         src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = wrap_variable(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         loss = model(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         loss.backward()
@@ -79,34 +82,53 @@ def run_epoch(model, critorion, model_optim, epoch_idx):
     return val_loss
 
 def infer(model, critorion):
+    model.eval()
     total_loss = 0
     for i, data in enumerate(val_loader):
-        src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = data
+        src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s ,trg_raw= data
         src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = wrap_variable(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         loss = model(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         total_loss += loss.detach()
     return total_loss/len(val_loader)
 
-def pridict(model, critorion):
+def predict(model):
+    model.eval()
     summ_list = []
+    raw_list = []
     for i, data in enumerate(test_loader):
-        src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = data
+        src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s ,trg_raw = data
         src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = wrap_variable(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         save_hyp = model.beam_predict(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         summ_list.append(save_hyp)
-    generate_summ(summ_list)
-    rouge = eval_rouge()#####
-    return rouge
+        raw_list.append(trg_raw)
+    generate_summ(summ_list, raw_list)
 
 def generate_summ(summ_list, tgt_seqs):
     id2token = data_loader.Dataset(args.pkl_path+"train.pkl").id2token
+    summ_pred = []
+    summ_raw = []
     for idxlist in summ_list:
         summ = [id2token[x] for x in idxlist if x != 0]
-    for idxlists in tgt_seqs:
-        tgt_summ = []
-        for idxlist in idxlists:
-            summ = [id2token[x] for x in idxlist if x != 0]
-            tgt_summ += summ
+        strs = " ".join(summ)
+        summ_pred.append(strs)
+    for rawlists in tgt_seqs:
+        tgt_summ = ""
+        for rawlist in rawlists:
+            for lists in rawlist:
+                strs = " ".join(lists)
+                tgt_summ += strs
+        summ_raw.append(tgt_summ)
+
+
+    for i in range(2):
+        print("-------------pred summ-------------")
+        print(summ_pred[i])
+        print("-------------raw  summ-------------")
+        print(summ_raw[i])
+
+
+
+
     ####to do
 
 def eval_rouge(file):

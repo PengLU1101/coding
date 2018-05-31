@@ -25,7 +25,8 @@ class Dataset(data.Dataset):
         """Returns one data pair (source and target)."""
         src_seq = self.datalist[index]["doc_idx"]
         trg_seq = self.datalist[index]["summs_idx"]
-        return src_seq, trg_seq
+        trg_raw = self.datalist[index]["summ_tokens"]
+        return src_seq, trg_seq, trg_raw
 
     def __len__(self):
         return self.num_total_pairs
@@ -74,13 +75,13 @@ def collate_fn(data):
     data.sort(key=lambda x: len(x[0]), reverse=True)
 
     # seperate source and target sequences
-    src_seqs, tgt_seqs = zip(*data)
+    src_seqs, tgt_seqs, trg_raw = zip(*data)
 
     # merge sequences (from tuple of 1D tensor to 2D tensor)
     src_seqs, src_mask_w, src_mask_s = merge(src_seqs)
     tgt_seqs, tgt_mask_w, tgt_mask_s = merge(tgt_seqs)
 
-    return src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s
+    return src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s, trg_raw
 def split_data_loader(pkl_path, batch_size, val_num, test_num):
     ## define our indices -- our dataset has 9 elements and we want a 8:4 split
     mydset = Dataset(pkl_path)
@@ -105,6 +106,7 @@ def split_data_loader(pkl_path, batch_size, val_num, test_num):
 
     train_loader = torch.utils.data.DataLoader(mydset, 
                                                batch_size=batch_size,
+                                               shuffle = True,
                                                collate_fn=collate_fn,
                                                sampler=train_sampler)
 

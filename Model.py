@@ -13,9 +13,9 @@ from Layer.RNN_Layer import *
 from Layer.Embedding_Layer import *
 import basic_beam
 
-teacher_forcing_ratio = 0.
-Max_Length_Doc = 10
-Max_Length_Sent = 12
+teacher_forcing_ratio = .5
+Max_Length_Doc = 5
+Max_Length_Sent = 10
 USE_CUDA = torch.cuda.is_available()
 
 
@@ -215,6 +215,8 @@ class EncoderDecoder(nn.Module):
             dec_out_sent, dec_hid_sent = self.s_decoder(dec_out_sent, dec_hid_sent)
 
             use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
+            if not self.training:
+                use_teacher_forcing = False
             if use_teacher_forcing:
                 for idx_w in range(seq_len-1):
                     gen_word_list = []
@@ -265,6 +267,7 @@ class EncoderDecoder(nn.Module):
         return total_loss
     def beam_decode(self, tgt_seqs,
                 enc_hid_doc, enc_hid_sent, beam_num):
+        batch_size, n_sent, seq_len = tgt_seqs.size()
         save_hyp = []
         for idx_s in range(Max_Length_Doc):#
             #word_state = Decode_State()
@@ -272,8 +275,8 @@ class EncoderDecoder(nn.Module):
                 dec_hid_sent = self.s_decoder.init_hid(batch_size)#
                 dec_out_sent = enc_hid_doc
             dec_out_sent, dec_hid_sent = self.s_decoder(dec_out_sent, dec_hid_sent)
-            beams = basic_beam.beam(beam_num)
-            for idx_w in range(Max_Length_sent):
+            beams = basic_beam.beam(beam_num, batch_size)
+            for idx_w in range(Max_Length_Sent):
                 gen_word_list = []
                 mask_list = []
                 if idx_w == 0:
@@ -282,16 +285,15 @@ class EncoderDecoder(nn.Module):
                     if USE_CUDA:
                         tmp = tmp.cuda()
                     tgts_input = self.embeddings(tmp)
-                    
-                dec_out_word, dec_hid_word = self.w_decoder(tgts_inpdec_hid_word)
+                dec_out_word, dec_hid_word = self.w_decoder(tgts_input, dec_hid_word)
                 out = self.classifier(dec_out_word).squeeze(1)#batch x num_voc
                 generate_word, prev_idx, done_flag = beams.advance(out.detach().data) # beam_num x 1
                 if done_flag:
                     break
                 generate_word = Variable(generate_word).cuda() if USE_CUDA else Variable(generate_word)
                 prev_idx = Variable(prev_idx).cuda() if USE_CUDA else Variable(prev_idx)
-                tgts_input = self.embeddings(generate_word)
-                dec_hid_sent = torch.index_select(dec_hid_sent, 0, prev_idx)
+                tgts_input = self.embeddings(generate_word).unsqueeze(1)
+                dec_hid_word = torch.index_select(dec_hid_word, 0, prev_idx)
 
             hyp = beams.get_hyp()
             save_hyp += hyp.view(-1).tolist()
