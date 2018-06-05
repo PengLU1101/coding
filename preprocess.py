@@ -46,6 +46,7 @@ def wordNormalize(word):
     word = re.sub("[0-9]{1,2}[.:]+[0-9]{2}:[0-9]{2}$", 'TIME_TOKEN', word)
     word = re.sub("[0-9]{2}:[0-9]{2}$", 'TIME_TOKEN', word)
     word = re.sub("^[0-9]+[.,//-]*[0-9]*$", 'NUMBER_TOKEN', word)
+    word = re.sub("http*", 'URL_token', word)
     return word
 
 def getCasing(word):   
@@ -95,7 +96,7 @@ def create_mapppings(data_list):
     return mappings
 
 
-def build_emb_matrix(path, mappings, dim, unk_frequence=50):
+def build_emb_matrix(path, mappings, dim, unk_frequence=10):
     special_tokens = ["<pad>", "<unk>", "<sos>", "<eos>", "<sod>", "<eod>"]
     token2id, id2token = {}, {}
     embeddingslist = []
@@ -125,9 +126,12 @@ def build_emb_matrix(path, mappings, dim, unk_frequence=50):
                 embeddingslist.append(vector)
     print("Deal with unk tokens out of pretrained embeddings...")
     count = 0
+    path = "./frq_dict.pkl"
+    kk = []    
     for key, value in tqdm(token_frq_dict.items()):
         if key not in token2id:
-            if value >= unk_frequence:
+            kk.append((key, value))
+            if value >= unk_frequence or key.startswith("@entity"):
                 token2id[key] = len(token2id)
                 id2token[len(id2token)] = key
                 vector = np.random.uniform(-stdv, stdv, dim)
@@ -137,6 +141,9 @@ def build_emb_matrix(path, mappings, dim, unk_frequence=50):
                 id2token[len(id2token)] = key
                 embeddingslist.append(np.zeros(dim))
                 count += 1
+    with open(path, "wb") as f:
+        pickle.dump(kk, f)
+    print("token_frq_dict", len(token_frq_dict))
     print("%d tokens in voc are mapped to <unk>" %count)
     embeddings = np.array([embeddingslist])
     mappings["token2id"] = token2id
@@ -167,14 +174,14 @@ def build_data_list(corp_dir):
 
     return data_list
 
-def create_pkl(corp_dir, pkl_path, path_emb, dim=300, unk_frequence=50):
+def create_pkl(corp_dir, pkl_path, path_emb, dim=300, unk_frequence=10):
     print("Reading raw files...")
     if os.path.isfile(pkl_path+"train.pkl"):
         file_name = os.path.split(pkl_path)[1]
         print("%s file exists." %file_name)
     else:
         corpus = {}
-        str_list = ["train/", "val/", "test/"]
+        str_list = ["training/", "validation/", "test/"]
         data_lists = []
         for item in str_list:
             corp_path = corp_dir + item
@@ -213,9 +220,9 @@ def read_pkl(path):
 
 
 def test():
-    dir_path = "./data/"
-    save_path = "./data/pkl/"
-    path_emb = "/u/lupeng/Project/code/vqvae_kb/.vector_cache/glove.42B.300d.txt"
+    dir_path = "./data/cnn/cnn/final/"
+    save_path = "./data/pkl/cnn/"
+    path_emb = "/u/lupeng/Project/code/vqvae_kb/.vector_cache/glove.6B.300d.txt"
     create_pkl(dir_path, save_path, path_emb)
     corpus = read_pkl(save_path+"train.pkl")
     print(type(corpus))

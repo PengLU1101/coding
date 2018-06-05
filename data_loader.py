@@ -122,7 +122,7 @@ def split_data_loader(pkl_path, batch_size, val_num, test_num):
     return train_loader, val_loader, test_loader
 
 
-def get_loader(pkl_path, batch_size=1):
+def get_loader(pkl_path, shuffle, batch_size=1):
     """Returns data loader for custom dataset.
 
     Args:
@@ -140,7 +140,7 @@ def get_loader(pkl_path, batch_size=1):
     # please see collate_fn for details
     data_loader = torch.utils.data.DataLoader(dataset=dataset,
                                               batch_size=batch_size,
-                                              shuffle=True,
+                                              shuffle=shuffle,
                                               collate_fn=collate_fn)
 
     return data_loader

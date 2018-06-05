@@ -68,6 +68,8 @@ class GRU_Layer(nn.Module):
             outs: [batch, seq_len, d_hid] FloatTensor
         """
         batch_size, seq_len, d_input = in_seqs.size()
+        print(d_input)
+        print(self.d_input)
         assert d_input == self.d_input
         if in_lens is not None:
             packed_inputs = pack(in_seqs.transpose(1, 0), in_lens)

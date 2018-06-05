@@ -20,12 +20,14 @@ import optim_custorm
 import loss_custorm
 from argsuse import *
 import preprocess
+from logger import Logger
+
 USE_CUDA = torch.cuda.is_available()
 
 n_voc = len(data_loader.Dataset(args.pkl_path+"train.pkl").token2id)
-train_loader = data_loader.get_loader(args.pkl_path+"train.pkl", args.batch_size)
-val_loader = data_loader.get_loader(args.pkl_path+"val.pkl", 1)
-test_loader = data_loader.get_loader(args.pkl_path+"test.pkl", 1)
+train_loader = data_loader.get_loader(args.pkl_path+"train.pkl", True, args.batch_size)
+val_loader = data_loader.get_loader(args.pkl_path+"val.pkl", False, 1)
+test_loader = data_loader.get_loader(args.pkl_path+"test.pkl", False, 1)
 weight = preprocess.read_pkl(args.pkl_path+"embeddings.pkl")
 
 
@@ -34,6 +36,8 @@ weight = preprocess.read_pkl(args.pkl_path+"embeddings.pkl")
 def main():
     critorion = loss_custorm.loss_fuc(nn.NLLLoss, ignore_index=0)
     model = Model.build_model(args.d_emb, args.d_hid, args.n_layers, args.dropout, n_voc, args.beam_num)
+    logger = Logger('./logs')
+
     params = model.parameters()
     model_optim = optim_custorm.NoamOpt(args.d_hid, args.factor, args.warm, torch.optim.Adam(params, lr=0, betas=(0.9, 0.98), eps=1e-9, weight_decay=args.L2))
     model.embeddings.apply_weights(weight)
@@ -43,12 +47,12 @@ def main():
         start_time = time.time()
         best_loss = 0
         for epoch_idx in range(args.max_epoch):
-            val_loss = run_epoch(model, critorion, model_optim, epoch_idx)
+            val_loss, train_loss = run_epoch(model, critorion, model_optim, epoch_idx)
             print('-' * 70)
-            print('| val_loss: %4.4f | val_ppl: %4.4f' %(val_loss, math.exp(val_loss)))
+            print('| val_loss: %4.4f | train_loss: %4.4f' %(val_loss, train_loss))
             print('-' * 70)
             if not best_loss or best_loss > val_loss:
-                Model.save_model(args.model_path, model)
+                Model.save_model(args.model_path+args.gpu+"/", model)
 
             if epoch_idx % 5 == 0 or not epoch_idx:
                 predict(model)
@@ -79,7 +83,7 @@ def run_epoch(model, critorion, model_optim, epoch_idx):
             total_loss = 0
             start_time_epoch = time.time()
     val_loss = infer(model, critorion)
-    return val_loss
+    return val_loss, total_loss/len(train_loader)
 
 def infer(model, critorion):
     model.eval()

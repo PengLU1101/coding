@@ -99,7 +99,7 @@ def tokenize_summary(proc_dir, docs):
     progress_bar = ProgressBar(len(docs))
     print 'Tokenizing summaries to', proc_dir
     for sid, doc in docs.items():
-        with open(proc_dir + '/' + sid + '.fina', 'w+') as pf:
+        with open(proc_dir + sid + '.fina', 'w+') as pf:
             pf.write(doc['url'] + '\n')
             pf.write(doc['story'].replace(" . ", " <eos> ").replace(" ? ", " <eos> ").replace(" ! ", " <eos> ").replace(" ; ", " <eos> ").replace(" .\n", " <eos>").replace(" ?\n", " <eos>").replace(" !\n", " <eos>").replace(" ;\n", " <eos>").replace("\n", " <eos>") + " <eod>\n\n")
             for token in doc["tokens"]:
@@ -161,11 +161,11 @@ def test():
 
 
 def main(corp):
-    base_dir = "/data/rali5/Tmp/pandu/summar/"
+    base_dir = "./"
     stages = ["summaries", "processed", "final"]
     sets = ["training", "validation", "test"]
-    path_from = base_dir + "/" + corp + "/" + stages[1] + "/"
-    path_to = base_dir + "/" + corp + "/" + stages[2] + "/"
+    path_from = base_dir + corp + "/" + stages[1] + "/"
+    path_to = base_dir + corp + "/" + stages[2] + "/"
     from_dirs = [path_from + ent + "/" for ent in sets]
     to_dirs = [path_to + ent + "/" for ent in sets]
 

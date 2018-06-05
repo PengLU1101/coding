@@ -100,7 +100,7 @@ def tokenize_summary(proc_dir, docs):
     ct = 0
     print 'Tokenizing summaries to', proc_dir
     for sid, doc in docs.items():
-        with open(proc_dir + '/' + sid + '.proc', 'w+') as pf:
+        with open(proc_dir + sid + '.proc', 'w+') as pf:
             pf.write(doc['url'] + '\n')
             pf.write(doc['story'] + '\n')
             tokens = {}
@@ -275,8 +275,8 @@ if __name__ == '__main__':
     # proc_dir = "./data/processed/"
     corp = 'cnn'
     # corp = 'dailymail'
-    sum_dirs = ['/data/rali5/Tmp/pandu/summar/' + corp + '/summaries/training/', '/data/rali5/Tmp/pandu/summar/' + corp + '/summaries/test/', '/data/rali5/Tmp/pandu/summar/' + corp + '/summaries/validation/']
-    proc_dirs = ['/data/rali5/Tmp/pandu/summar/' + corp + '/processed/training/', '/data/rali5/Tmp/pandu/summar/' + corp + '/processed/test/', '/data/rali5/Tmp/pandu/summar/' + corp + '/processed/validation/']
+    sum_dirs = ['./' + corp + '/summaries/training/', './' + corp + '/summaries/test/', './' + corp + '/summaries/validation/']
+    proc_dirs = ['./' + corp + '/processed/training/', './' + corp + '/processed/test/', './' + corp + '/processed/validation/']
     for ind, summ_dir in enumerate(sum_dirs):
         docs = organize_summary(summ_dir)
         tokenize_summary(proc_dirs[ind], docs)

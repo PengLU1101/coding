@@ -114,8 +114,8 @@ def getsummary_map(story_dir):
 
 if __name__ == '__main__':
     # corp = 'cnn'
-    corp = 'dailymail'
-    story_dir = '/data/rali5/Tmp/pandu/summar/' + corp + '/stories/'
+    corp = 'cnn'
+    story_dir = './data/rali5/Tmp/pandu/summar/' + corp + '/stories/'
 
     corp_dirs = ['/data/rali5/Tmp/pandu/summar/' + corp + '/questions/training/', '/data/rali5/Tmp/pandu/summar/' + corp + '/questions/test/', '/data/rali5/Tmp/pandu/summar/' + corp + '/questions/validation/']
     merg_dirs = ['/data/rali5/Tmp/pandu/summar/' + corp + '/summaries/training/', '/data/rali5/Tmp/pandu/summar/' + corp + '/summaries/test/', '/data/rali5/Tmp/pandu/summar/' + corp + '/summaries/validation/']

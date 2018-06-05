@@ -105,6 +105,7 @@ class Sent_Decoder(nn.Module):
             out: [FloatTensor] batch x 1 x d_hid
             h: [FloatTensor] batch x 1 x d_hid
         """
+        print("sent_decoder")
         batch_size, _, d_hid = hid_doc.size()
         hid_sent_dec = hid_doc.transpose(1, 0)
         out, hid_sent_dec = self.rnn(sent_input, hid_sent_dec)
@@ -122,6 +123,7 @@ class Word_Decoder(nn.Module):
         self.logSM = nn.LogSoftmax(dim=-1)
 
     def forward(self, tgts, hid_sent):
+        print("word_decoder")
         return self.decode(tgts, hid_sent)
 
     def decode(self, tgts, hid_word_dec):
@@ -218,11 +220,11 @@ class EncoderDecoder(nn.Module):
             if not self.training:
                 use_teacher_forcing = False
             if use_teacher_forcing:
-                for idx_w in range(seq_len-1):
+                for idx_w in range(seq_len):
                     gen_word_list = []
                     mask_list = []
                     if idx_w == 0:
-                        dec_hid_word = dec_hid_sent
+                        dec_hid_word = dec_out_sent
                         tmp = Variable(torch.LongTensor([[2]]*batch_size))
                         if USE_CUDA:
                             tmp = tmp.cuda()
@@ -230,7 +232,7 @@ class EncoderDecoder(nn.Module):
     
                     dec_out_word, dec_hid_word = self.w_decoder(tgts_input, dec_hid_word)
                     out = self.classifier(dec_out_word).squeeze(1)#batch x num_voc
-                    loss = self.cal_loss(out.squeeze(1), tgt_seqs[:, idx_s, idx_w+1])
+                    loss = self.cal_loss(out.squeeze(1), tgt_seqs[:, idx_s, idx_w])
                     total_loss += loss
                     tgts_input = tgt_embs[:, idx_s, idx_w, :].unsqueeze(1)
                 dec_out_sent = self.w_encoder(tgt_embs[:, idx_s, :, :].unsqueeze(1), tgt_mask_w[:, idx_s, :].unsqueeze(1))
@@ -238,7 +240,7 @@ class EncoderDecoder(nn.Module):
                 #if idx_w == 0:
                 #    if 
             else:
-                for idx_w in range(seq_len-1):
+                for idx_w in range(seq_len):
                     gen_word_list = []
                     mask_list = []
                     if idx_w == 0:
@@ -249,7 +251,7 @@ class EncoderDecoder(nn.Module):
                         tgts_input = self.embeddings(tmp)
                     dec_out_word, dec_hid_word = self.w_decoder(tgts_input, dec_hid_word)
                     out = self.classifier(dec_out_word).squeeze(1)#batch x num_voc
-                    loss = self.cal_loss(out.squeeze(1), tgt_seqs[:, idx_s, idx_w+1])
+                    loss = self.cal_loss(out.squeeze(1), tgt_seqs[:, idx_s, idx_w])
                     total_loss += loss
                     #score, idx = torch.max(out, dim=-1)# idx: batch x 1
                     score, idx = torch.topk(out, 1, -1)
@@ -307,13 +309,14 @@ class EncoderDecoder(nn.Module):
 
 def build_model(d_emb, d_hid, n_layers, dropout, n_voc, beam_num=5):
     print("Building model...")
-    rnn = GRU_Layer(d_emb, d_hid, n_layers, dropout, bidirectional=True)
-    rnn_ = GRU_Layer(d_hid, d_hid, n_layers, dropout, bidirectional=True)
-    rnn_inner = GRU_Layer(d_hid, d_hid, n_layers, dropout, bidirectional=False)
-    w_encoder = Word_Encoder(rnn)
-    s_encoder = Sent_Encoder(rnn_)
-    w_decoder = Word_Decoder(rnn_inner)
-    s_decoder = Sent_Decoder(copy.deepcopy(rnn_inner))
+    rnn_ew = GRU_Layer(d_emb, d_hid, n_layers, dropout, bidirectional=True)
+    rnn_es = GRU_Layer(d_hid, d_hid, n_layers, dropout, bidirectional=True)
+    rnn_dw = GRU_Layer(d_emb, d_hid, n_layers, dropout, bidirectional=False)
+    rnn_ds = GRU_Layer(d_hid, d_hid, n_layers, dropout, bidirectional=False)
+    w_encoder = Word_Encoder(rnn_ew)
+    s_encoder = Sent_Encoder(rnn_es)
+    w_decoder = Word_Decoder(rnn_dw)
+    s_decoder = Sent_Decoder(rnn_ds)
     classifier = Classifier(d_hid, n_voc)
     embeddings = Embedding_Layer(n_voc, d_emb)
     model = EncoderDecoder(w_encoder, s_encoder, w_decoder, s_decoder, embeddings, classifier, beam_num)
@@ -321,8 +324,6 @@ def build_model(d_emb, d_hid, n_layers, dropout, n_voc, beam_num=5):
         model = model.cuda()
     return model
 
-def ok():
-    pass
 
 def test():
     inputs = Variable(torch.eye(12, 5).view(3, 4, -1).long())
