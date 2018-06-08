@@ -1,52 +1,46 @@
-class Attention(nn.Module):
-	def __init__(self, ):
-		super(Attention, self).__init__()
-		pass
+import torch
+import torch.nn as nn
+from torch.autograd import Variable
+from torch import optim
+import torch.nn.functional as F
 
-	def forward(self, key, value, query):
-		pass
-
-def dot_attn(key, value, query):
-	pass
-
-class bilinear_attn(nn.Module):
-	def __init__(self, ):
-		super(bilinear_attn, self).__init__()
-
-		pass
-	def forward(self, key, value, query):
-		pass
-
-
-class mlp_attn(nn.Module):
-	def __init__(self, ):
-		super(mlp_attn, self).__init__()
-
-		pass
-
-	def forward(self, key, value, query):
-		pass
-	
-def build_sent_graph(nn.Module):
+class Graph_Sent(nn.Module):
 	"""
-	Function for building the original sentences graph
-	args:
-		sents[FloatTensor]: batch_size x n_sent x d_hid
-	outs:
-		graph_matric[FloatTensor]: batch x n_sent x n_sent
+	Build a sentence graph
+	Args:
+		hid_sent[FloatTensor]: Batch x n_sent x d_hid
+	Outs:
+		sent_graph[FloatTensor]: Batch x n_sent x n_sent
 	"""
 	def __init__(self, d_hid):
-		super(build_sent_graph).__init__()
+		super(Graph_Sent, self).__init__()
 		self.d_hid = d_hid
 		self.fc = nn.Linear(d_hid, d_hid)
 
-	def forward(self, sents):
-		batch_size, n_sent, d_hid = sents.size()
-		sents = sents.contiguours().view(batch_size*n_sent, -1)
-		transform_sents = self.fc(sents)
-		transform_sents = transform_sents.contiguous()view(batch_size, n_sent, -1)
-		graph_matrix = torch.bmm(sents, transform_sents.transpose(1, 2))
-	return graph_matrix
+	def forward(self, hid_sent):
+		batch_size, n_sent, d_hid = hid_sent.size()
+		transform_sent = self.fc(hid_sent.view(batch_size*n_sent, -1))
+		transform_sent = transform_sent.view(batch_size, n_sent, -1).transpose(1, 0)
+		graph = torch.bmm(hid_sent, transform_sent) # batch x n_sent x n_sent
+		return graph
+
+class Graph_Attn(nn.Module):
+	"""
+	Graph Attention:
+	Args:
+		hid_sent[FloatTensor]: Batch x n_sent x d_hid
+	Outs:
+		sent_graph[FloatTensor]: Batch x n_sent x n_sent
+	"""
+	def __init__(self, graph, attn_fuc):
+		super(Graph_Attn, self).__init__()
+		self.graph_sent = graph
+		self.attn_fuc = attn_fuc
+
+	def forward(self, hid_sents, cur_sent):
+		pass
 
 
+def Importance_Score():
+	
 

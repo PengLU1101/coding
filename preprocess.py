@@ -7,12 +7,14 @@ import logging
 import glob
 import pickle
 
+import nltk
 from tqdm import tqdm
 import codecs
 import re
 import math
 from collections import defaultdict
 import sys
+
 if (sys.version_info > (3, 0)):
     import pickle as pkl
 else: #Python 2.7 imports
@@ -47,6 +49,7 @@ def wordNormalize(word):
     word = re.sub("[0-9]{2}:[0-9]{2}$", 'TIME_TOKEN', word)
     word = re.sub("^[0-9]+[.,//-]*[0-9]*$", 'NUMBER_TOKEN', word)
     word = re.sub("http*", 'URL_token', word)
+    word = re.sub("www*", 'URL_token', word)
     return word
 
 def getCasing(word):   
@@ -91,8 +94,28 @@ def create_mapppings(data_list):
                     for word in sents:
                         token = wordNormalize(word)
                         token_frq_dict[token] += 1
-    mappings = {"token_frq_dict": token_frq_dict,
-                "caseing2id": caseing2id}
+            else:
+                pass
+    mappings = {"token_frq_dict": token_frq_dict}
+    doc_frq_dict = defaultdict(int)
+    summ_frq_dict = defaultdict(int)
+    for data in data_list:
+        for value, part in data.items():
+            if value == "doc_tokens":
+                sets = set([wordNormalize(word) for wordlist in part for word in wordlist])
+                for x in sets:
+                    doc_frq_dict[x] += 1
+            elif value == "summ_tokens":
+                sets = set([wordNormalize(word) for wordlist in part for word in wordlist])
+                for x in sets:
+                    summ_frq_dict[x] += 1
+    path_doc_frq_dict = "./doc_frq_dict"
+    with open(path_doc_frq_dict, "wb") as f:
+        pickle.dump(doc_frq_dict, f)
+    path_summ_frq_dict = "./summ_frq_dict"
+    with open(path_summ_frq_dict, "wb") as f:
+        pickle.dump(summ_frq_dict, f)
+
     return mappings
 
 
@@ -119,7 +142,7 @@ def build_emb_matrix(path, mappings, dim, unk_frequence=10):
             split = line.rstrip().split(" ")
             token = split[0]
             assert len(vector) == dim
-            if token in token_frq_dict:
+            if token in token_frq_dict and token_frq_dict[token] > unk_frequence:
                 token2id[token] = len(token2id) 
                 id2token[len(id2token)] = token
                 vector = np.array([float(num) for num in split[1:]])
@@ -182,11 +205,19 @@ def create_pkl(corp_dir, pkl_path, path_emb, dim=300, unk_frequence=10):
     else:
         corpus = {}
         str_list = ["training/", "validation/", "test/"]
-        data_lists = []
-        for item in str_list:
-            corp_path = corp_dir + item
-            data_list = build_data_list(corp_path)
-            data_lists.append(data_list)
+        path_data_list = "./data/pkl/datalist.pkl"
+        if os.path.isfile(path_data_list):
+            with open(path_data_list, "rb") as f:
+                data_lists = pickle.load(f)
+        else:
+            data_lists = []
+            for item in str_list:
+                corp_path = corp_dir + item
+                data_list = build_data_list(corp_path)
+                data_lists.append(data_list)
+            with open(path_data_list, "wb") as f:
+                pickle.dump(data_lists, f)
+
 
         mappings = create_mapppings(data_lists[0]+data_lists[1]+data_lists[2])
         mappings, embeddings = build_emb_matrix(path_emb, mappings, dim, unk_frequence)
@@ -220,8 +251,10 @@ def read_pkl(path):
 
 
 def test():
-    dir_path = "./data/cnn/cnn/final/"
+    #dir_path = "/data/rali5/Tmp/pandu/summar/cnn/final/"
+    dir_path = "./data/"
     save_path = "./data/pkl/cnn/"
+    save_path = "./data/pkl/try/"
     path_emb = "/u/lupeng/Project/code/vqvae_kb/.vector_cache/glove.6B.300d.txt"
     create_pkl(dir_path, save_path, path_emb)
     corpus = read_pkl(save_path+"train.pkl")

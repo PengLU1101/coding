@@ -20,6 +20,7 @@ import optim_custorm
 import loss_custorm
 from argsuse import *
 import preprocess
+from rouge import Rouge
 from logger import Logger
 
 USE_CUDA = torch.cuda.is_available()
@@ -36,7 +37,7 @@ weight = preprocess.read_pkl(args.pkl_path+"embeddings.pkl")
 def main():
     critorion = loss_custorm.loss_fuc(nn.NLLLoss, ignore_index=0)
     model = Model.build_model(args.d_emb, args.d_hid, args.n_layers, args.dropout, n_voc, args.beam_num)
-    logger = Logger('./logs')
+    logger = Logger('./logs/'+args.gpu)
 
     params = model.parameters()
     model_optim = optim_custorm.NoamOpt(args.d_hid, args.factor, args.warm, torch.optim.Adam(params, lr=0, betas=(0.9, 0.98), eps=1e-9, weight_decay=args.L2))
@@ -47,15 +48,16 @@ def main():
         start_time = time.time()
         best_loss = 0
         for epoch_idx in range(args.max_epoch):
-            val_loss, train_loss = run_epoch(model, critorion, model_optim, epoch_idx)
+            val_loss, train_loss = run_epoch(model, critorion, model_optim, epoch_idx, logger)
             print('-' * 70)
             print('| val_loss: %4.4f | train_loss: %4.4f' %(val_loss, train_loss))
             print('-' * 70)
             if not best_loss or best_loss > val_loss:
                 Model.save_model(args.model_path+args.gpu+"/", model)
 
-            if epoch_idx % 5 == 0 or not epoch_idx:
-                predict(model)
+            #if epoch_idx % 5 == 0 or not epoch_idx:
+            predict(model, epoch_idx, logger)
+
     else:
         model = Model.read_model(args.model_path, model)
         save_hyp = pridict(model)
@@ -64,25 +66,43 @@ def main():
 def wrap_variable(*args):
     return [Variable(tensor, requires_grad=False).cuda() if USE_CUDA else Variable(tensor, requires_grad=False) for tensor in args]
 
-def run_epoch(model, critorion, model_optim, epoch_idx):
+def update_log(model, logger, loss, step):
+    # 1. Log scalar values (scalar summary)
+    info = { 'loss': loss.data[0]}
+
+    for tag, value in info.items():
+        logger.scalar_summary(tag, value, step+1)
+
+    # 2. Log values and gradients of the parameters (histogram summary)
+    for tag, value in model.named_parameters():
+        tag = tag.replace('.', '/')
+        logger.histo_summary(tag, value.data.cpu().numpy(), step+1)
+        logger.histo_summary(tag+'/grad', value.grad.data.cpu().numpy(), step+1)
+
+def run_epoch(model, critorion, model_optim, epoch_idx, logger):
     model.train()
     total_loss = 0
     start_time_epoch = time.time()
     for i, data in enumerate(train_loader):
+        model.zero_grad()
         src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s, trg_raw = data
         src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s = wrap_variable(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         loss = model(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         loss.backward()
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
-        model_optim.step()
-        model.zero_grad()
+        rate = model_optim.step()
         total_loss += loss.detach()
         if i % args.print_every == 0 and i != 0:
             using_time = time.time() - start_time_epoch
             print('| ep %2d | %4d/%5d btcs | ms/btc %4.4f | loss %5.7f |' %(epoch_idx+1, i, len(train_loader), using_time * 1000 / (args.print_every), total_loss/args.print_every))
             total_loss = 0
             start_time_epoch = time.time()
+            update_log(model, logger, loss, i)
+            logger.scalar_summary("lr", rate, i+1)
+
     val_loss = infer(model, critorion)
+    logger.scalar_summary("val_loss", val_loss.data[0], epoch_idx+1)
+    logger.scalar_summary("train_loss", (total_loss/len(train_loader)), epoch_idx+1)
     return val_loss, total_loss/len(train_loader)
 
 def infer(model, critorion):
@@ -95,7 +115,7 @@ def infer(model, critorion):
         total_loss += loss.detach()
     return total_loss/len(val_loader)
 
-def predict(model):
+def predict(model, epoch_idx, logger):
     model.eval()
     summ_list = []
     raw_list = []
@@ -105,9 +125,9 @@ def predict(model):
         save_hyp = model.beam_predict(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         summ_list.append(save_hyp)
         raw_list.append(trg_raw)
-    generate_summ(summ_list, raw_list)
+    generate_summ(summ_list, raw_list, epoch_idx, logger)
 
-def generate_summ(summ_list, tgt_seqs):
+def generate_summ(summ_list, tgt_seqs, epoch_idx, logger):
     id2token = data_loader.Dataset(args.pkl_path+"train.pkl").id2token
     summ_pred = []
     summ_raw = []
@@ -122,7 +142,7 @@ def generate_summ(summ_list, tgt_seqs):
                 strs = " ".join(lists)
                 tgt_summ += strs
         summ_raw.append(tgt_summ)
-
+    eval_rouge(summ_pred ,summ_raw, epoch_idx, logger)
 
     for i in range(2):
         print("-------------pred summ-------------")
@@ -131,15 +151,16 @@ def generate_summ(summ_list, tgt_seqs):
         print(summ_raw[i])
 
 
+def eval_rouge(summ_pred ,summ_raw, epoch_idx, logger):
+    hyps, refs = map(list, zip(*[[d[0], d[1]] for d in zip(summ_pred ,summ_raw)]))
+    rouge = Rouge()
+    scores = rouge.get_scores(hyps, refs, avg=True)
+    for key, value in scores.items():
+        for tag, sub_v in value.items():
+            logger.scalar_summary(key+"_"+tag, sub_v, epoch_idx+1)
 
 
-    ####to do
-
-def eval_rouge(file):
-    pass #to do
-
-   
-
+    print(scores)
 
 if __name__ == '__main__':
     main()

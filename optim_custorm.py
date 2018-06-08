@@ -17,6 +17,7 @@ class NoamOpt:
             p['lr'] = rate
         self._rate = rate
         self.optimizer.step()
+        return rate
         
     def rate(self, step = None):
         #"Implement `lrate` above"

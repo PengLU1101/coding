@@ -105,7 +105,6 @@ class Sent_Decoder(nn.Module):
             out: [FloatTensor] batch x 1 x d_hid
             h: [FloatTensor] batch x 1 x d_hid
         """
-        print("sent_decoder")
         batch_size, _, d_hid = hid_doc.size()
         hid_sent_dec = hid_doc.transpose(1, 0)
         out, hid_sent_dec = self.rnn(sent_input, hid_sent_dec)
@@ -123,7 +122,6 @@ class Word_Decoder(nn.Module):
         self.logSM = nn.LogSoftmax(dim=-1)
 
     def forward(self, tgts, hid_sent):
-        print("word_decoder")
         return self.decode(tgts, hid_sent)
 
     def decode(self, tgts, hid_word_dec):
