@@ -3,7 +3,6 @@ import torch.nn as nn
 from torch.autograd import Variable
 from torch import optim
 import torch.nn.functional as F
-from tensorboardX import SummaryWriter
 
 import os
 import random

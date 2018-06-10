@@ -11,6 +11,7 @@ import random
 
 from Layer.RNN_Layer import *
 from Layer.Embedding_Layer import *
+from Attention import *
 import basic_beam
 
 teacher_forcing_ratio = .5
@@ -30,13 +31,19 @@ def read_model(path, model):
 
 def Cal_index(mask):
     lens_list = torch.sum(mask, dim=1).data.tolist()
-    index = torch.LongTensor(sorted(range(len(lens_list)), key=lambda x: -lens_list[x]))
-    length = [lens_list[i] for i in index]
+    trans_idx_list = sorted(range(len(lens_list)), key=lambda x: -lens_list[x])
+    re_trans_idx_list = sorted(range(len(lens_list)), key=lambda x: trans_idx_list[x])
+    trans_idx = torch.LongTensor(trans_idx_list)
+    re_trans_idx = torch.LongTensor(re_trans_idx_list)
+    length = [lens_list[i] for i in trans_idx_list]
     if USE_CUDA:
-        index = Variable(index).cuda()
+        trans_idx = Variable(trans_idx).cuda()
+        re_trans_idx = Variable(re_trans_idx).cuda()
     else:
-        index = Variable(index)
-    return index, length
+        trans_idx = Variable(trans_idx)
+        re_trans_idx = Variable(re_trans_idx)
+
+    return trans_idx, length, re_trans_idx
 
 
 class Word_Encoder(nn.Module):
@@ -55,12 +62,12 @@ class Word_Encoder(nn.Module):
         batch_size, n_sent, seq_len, d_em = inputs.size()
         inputs = inputs.contiguous().view(batch_size*n_sent, seq_len, -1)
         mask = mask.contiguous().view(batch_size*n_sent, -1)
-        index, length = Cal_index(mask)
-        inputs_indexed = torch.index_select(inputs, 0, index)
+        trans_idx, length, re_trans_idx = Cal_index(mask)
+        inputs_indexed = torch.index_select(inputs, 0, trans_idx)
         h0 = self.rnn.init_hid(batch_size*n_sent)
         outs, hid_sent = self.rnn(inputs_indexed, h0, length) # batch*n_sent x seq_len x d_hid
-        outs = torch.index_select(outs, 0, index)
-        hid_sent = torch.index_select(hid_sent, 0, index).squeeze(dim=1)
+        outs = torch.index_select(outs, 0, re_trans_idx)
+        hid_sent = torch.index_select(hid_sent, 0, re_trans_idx).squeeze(dim=1)
         hid_sent = hid_sent.contiguous().view(batch_size, n_sent, -1) # batch x n_sent x d_hid
         return hid_sent
 
@@ -80,12 +87,12 @@ class Sent_Encoder(nn.Module):
         batch_size, n_sent, d_hid = inputs.size()
         inputs = inputs * mask.unsqueeze(-1).float()
 
-        index, length = Cal_index(mask)
-        inputs_indexed = torch.index_select(inputs, 0, index)
+        trans_idx, length, re_trans_idx = Cal_index(mask)
+        inputs_indexed = torch.index_select(inputs, 0, trans_idx)
         h0 = self.rnn.init_hid(batch_size)
         outs, hid_doc = self.rnn(inputs_indexed, h0, length) # hid_doc: batch x d_hid
-        outs = torch.index_select(outs, 0, index)
-        hid_doc = torch.index_select(hid_doc, 0, index) # batch x 1 x d_hid
+        outs = torch.index_select(outs, 0, re_trans_idx)
+        hid_doc = torch.index_select(hid_doc, 0, re_trans_idx) # batch x 1 x d_hid
         return hid_doc
 
 
@@ -158,7 +165,7 @@ class Classifier(nn.Module):
 
 class EncoderDecoder(nn.Module):
     def __init__(self, w_encoder, s_encoder, 
-                 w_decoder, s_decoder,
+                 w_decoder, s_decoder, attn,
                  embeddings, classifier, beam_num):
         super(EncoderDecoder, self).__init__()
         self.w_encoder = w_encoder
@@ -166,6 +173,7 @@ class EncoderDecoder(nn.Module):
         self.w_decoder = w_decoder
         self.s_decoder = s_decoder
         self.embeddings = embeddings
+        self.attn = attn
         self.classifier = classifier
         self.beam_num = beam_num
         #self.cal_loss = loss_custorm.loss_fuc(nn.NLLLoss, ignore_index=0)
@@ -191,7 +199,6 @@ class EncoderDecoder(nn.Module):
             hid_doc: (FloatTensor) Batch x 1 x d_hid
         """
         hid_sent = self.w_encoder(self.embeddings(inputs), mask_w)
-        index, length = Cal_index(mask_s)
         hid_doc = self.s_encoder(hid_sent, mask_s)
         
         return hid_doc, hid_sent
@@ -199,6 +206,7 @@ class EncoderDecoder(nn.Module):
     def decode(self, tgt_seqs, tgt_mask_w,
                 enc_hid_doc, enc_hid_sent):
         batch_size, n_sent, seq_len = tgt_seqs.size()
+        batch_size, n_sent_enc, d_hid = enc_hid_sent.size()
         seq_state = [] 
         tgt_embs = self.embeddings(tgt_seqs) # batch x n_sent x seq_len x d_emb
         total_loss = 0
@@ -206,13 +214,15 @@ class EncoderDecoder(nn.Module):
             #word_state = Decode_State()
             if idx_s == 0:
                 tmp = Variable(torch.LongTensor([[4]]*batch_size))
+                f_prev = Variable(torch.ones(batch_size, n_sent_enc+1) * 1/(n_sent_enc+1))
                 if USE_CUDA:
                     tmp = tmp.cuda()
-                
+                    f_prev = f_prev.cuda()
                 dec_out_sent = self.embeddings(tmp)
-
+                attn_sent, f_prev = self.attn(enc_hid_sent, dec_out_sent, f_prev)
                 dec_hid_sent = enc_hid_doc
-            dec_out_sent, dec_hid_sent = self.s_decoder(dec_out_sent, dec_hid_sent)
+            dec_input = torch.cat((dec_out_sent, attn_sent), dim=-1)
+            dec_out_sent, dec_hid_sent = self.s_decoder(dec_input, dec_hid_sent)
 
             use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
             if not self.training:
@@ -235,8 +245,6 @@ class EncoderDecoder(nn.Module):
                     tgts_input = tgt_embs[:, idx_s, idx_w, :].unsqueeze(1)
                 dec_out_sent = self.w_encoder(tgt_embs[:, idx_s, :, :].unsqueeze(1), tgt_mask_w[:, idx_s, :].unsqueeze(1))
 
-                #if idx_w == 0:
-                #    if 
             else:
                 for idx_w in range(seq_len):
                     gen_word_list = []
@@ -268,13 +276,22 @@ class EncoderDecoder(nn.Module):
     def beam_decode(self, tgt_seqs,
                 enc_hid_doc, enc_hid_sent, beam_num):
         batch_size, n_sent, seq_len = tgt_seqs.size()
+        batch_size, n_sent_enc, d_hid = enc_hid_sent.size()
+
         save_hyp = []
         for idx_s in range(Max_Length_Doc):#
             #word_state = Decode_State()
             if idx_s == 0:
-                dec_hid_sent = self.s_decoder.init_hid(batch_size)#
-                dec_out_sent = enc_hid_doc
-            dec_out_sent, dec_hid_sent = self.s_decoder(dec_out_sent, dec_hid_sent)
+                tmp = Variable(torch.LongTensor([[4]]*batch_size))
+                f_prev = Variable(torch.ones(batch_size, n_sent_enc+1) * 1/(n_sent_enc+1))
+                if USE_CUDA:
+                    tmp = tmp.cuda()
+                    f_prev = f_prev.cuda()
+                dec_out_sent = self.embeddings(tmp)
+                attn_sent, f_prev = self.attn(enc_hid_sent, dec_out_sent, f_prev)
+                dec_hid_sent = enc_hid_doc
+            dec_input = torch.cat((dec_out_sent, attn_sent), dim=-1)
+            dec_out_sent, dec_hid_sent = self.s_decoder(dec_input, dec_hid_sent)
             beams = basic_beam.beam(beam_num, batch_size)
             for idx_w in range(Max_Length_Sent):
                 gen_word_list = []
@@ -310,14 +327,18 @@ def build_model(d_emb, d_hid, n_layers, dropout, n_voc, beam_num=5):
     rnn_ew = GRU_Layer(d_emb, d_hid, n_layers, dropout, bidirectional=True)
     rnn_es = GRU_Layer(d_hid, d_hid, n_layers, dropout, bidirectional=True)
     rnn_dw = GRU_Layer(d_emb, d_hid, n_layers, dropout, bidirectional=False)
-    rnn_ds = GRU_Layer(d_hid, d_hid, n_layers, dropout, bidirectional=False)
+    rnn_ds = GRU_Layer(d_hid+d_hid, d_hid, n_layers, dropout, bidirectional=False)
     w_encoder = Word_Encoder(rnn_ew)
     s_encoder = Sent_Encoder(rnn_es)
     w_decoder = Word_Decoder(rnn_dw)
     s_decoder = Sent_Decoder(rnn_ds)
     classifier = Classifier(d_hid, n_voc)
+    graphsent = Graph_Sent(d_hid)
+    graphattn = Graph_Attn(graphsent)
     embeddings = Embedding_Layer(n_voc, d_emb)
-    model = EncoderDecoder(w_encoder, s_encoder, w_decoder, s_decoder, embeddings, classifier, beam_num)
+    model = EncoderDecoder(w_encoder, s_encoder, 
+                           w_decoder, s_decoder, graphattn,
+                           embeddings, classifier, beam_num)
     if USE_CUDA:
         model = model.cuda()
     return model
