@@ -58,7 +58,11 @@ class GRU_Layer(nn.Module):
         else:
             self.n_direction = 1
             self.d_hid = d_hid
-        self.rnn = nn.GRU(d_input, self.d_hid, n_layers, dropout, bidirectional=bidirectional)
+        self.rnn = nn.GRU(input_size=d_input, 
+                          hidden_size=self.d_hid, 
+                          num_layers=n_layers, 
+                          dropout=dropout, 
+                          bidirectional=bidirectional)
     def forward(self, in_seqs, h0, in_lens=None):
         """
         Arguments:

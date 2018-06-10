@@ -101,8 +101,6 @@ class Sent_Decoder(nn.Module):
         super(Sent_Decoder, self).__init__()
         self.rnn = rnn
 
-    def _forward(self, hid_doc, hid_sent_dec):
-        return self.decode(hid_doc, hid_sent_dec)
     def forward(self, sent_input, hid_doc):
         """
         Args:
@@ -126,7 +124,6 @@ class Word_Decoder(nn.Module):
     def __init__(self, rnn):
         super(Word_Decoder, self).__init__()
         self.rnn = rnn
-        self.logSM = nn.LogSoftmax(dim=-1)
 
     def forward(self, tgts, hid_sent):
         return self.decode(tgts, hid_sent)
@@ -246,6 +243,9 @@ class EncoderDecoder(nn.Module):
                 dec_out_sent = self.w_encoder(tgt_embs[:, idx_s, :, :].unsqueeze(1), tgt_mask_w[:, idx_s, :].unsqueeze(1))
 
             else:
+                mask_hold = Variable(torch.ones(batch_size, 1)).long()
+                if USE_CUDA:
+                    mask_hold = mask_hold.cuda()
                 for idx_w in range(seq_len):
                     gen_word_list = []
                     mask_list = []
@@ -262,9 +262,14 @@ class EncoderDecoder(nn.Module):
                     #score, idx = torch.max(out, dim=-1)# idx: batch x 1
                     score, idx = torch.topk(out, 1, -1)
                     generate_word = idx.detach().long()
-                    mask = torch.gt(generate_word, 0.0).long()
+                    #mask = torch.gt(generate_word, 0).long()
+                    generate_word = generate_word * mask_hold
                     gen_word_list.append(generate_word)
-                    mask_list.append(mask)
+                    mask_list.append(mask_hold)
+                    if any(generate_word.data.cpu().numpy()) == 3:
+                        mask_next = torch.ne(generate_word, 3).long()
+                        mask_hold = mask_hold * mask_next
+
                     tgts_input = self.embeddings(generate_word)
                     if all(generate_word.data.cpu().numpy()) == 3: # id2token[3] = "<eos>"
                         break
