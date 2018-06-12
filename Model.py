@@ -204,7 +204,6 @@ class EncoderDecoder(nn.Module):
                 enc_hid_doc, enc_hid_sent):
         batch_size, n_sent, seq_len = tgt_seqs.size()
         batch_size, n_sent_enc, d_hid = enc_hid_sent.size()
-        seq_state = [] 
         tgt_embs = self.embeddings(tgt_seqs) # batch x n_sent x seq_len x d_emb
         total_loss = 0
         for idx_s in range(n_sent):#
@@ -226,8 +225,6 @@ class EncoderDecoder(nn.Module):
                 use_teacher_forcing = False
             if use_teacher_forcing:
                 for idx_w in range(seq_len):
-                    gen_word_list = []
-                    mask_list = []
                     if idx_w == 0:
                         dec_hid_word = dec_out_sent
                         tmp = Variable(torch.LongTensor([[2]]*batch_size))
@@ -246,9 +243,9 @@ class EncoderDecoder(nn.Module):
                 mask_hold = Variable(torch.ones(batch_size, 1)).long()
                 if USE_CUDA:
                     mask_hold = mask_hold.cuda()
+                gen_word_list = []
+                mask_list = []
                 for idx_w in range(seq_len):
-                    gen_word_list = []
-                    mask_list = []
                     if idx_w == 0:
                         dec_hid_word = dec_hid_sent
                         tmp = Variable(torch.LongTensor([[2]]*batch_size))
@@ -266,16 +263,18 @@ class EncoderDecoder(nn.Module):
                     generate_word = generate_word * mask_hold
                     gen_word_list.append(generate_word)
                     mask_list.append(mask_hold)
-                    if any(generate_word.data.cpu().numpy()) == 3:
+                    if torch.eq(generate_word.data, 3).cpu().numpy().any():
                         mask_next = torch.ne(generate_word, 3).long()
                         mask_hold = mask_hold * mask_next
 
                     tgts_input = self.embeddings(generate_word)
-                    if all(generate_word.data.cpu().numpy()) == 3: # id2token[3] = "<eos>"
+                    #if all(generate_word.data.cpu().numpy()) == 3: # id2token[3] = "<eos>"
+                    if torch.eq(generate_word, 3).cpu().data.numpy().all():
                         break
 
                 generate_sent = self.embeddings(torch.cat(gen_word_list, dim=1))
                 mask_w = torch.cat(mask_list, dim=1)
+
                 dec_out_sent = self.w_encoder(generate_sent.unsqueeze(1), mask_w)
         return total_loss
     def beam_decode(self, tgt_seqs,
@@ -299,8 +298,6 @@ class EncoderDecoder(nn.Module):
             dec_out_sent, dec_hid_sent = self.s_decoder(dec_input, dec_hid_sent)
             beams = basic_beam.beam(beam_num, batch_size)
             for idx_w in range(Max_Length_Sent):
-                gen_word_list = []
-                mask_list = []
                 if idx_w == 0:
                     dec_hid_word = dec_hid_sent
                     tmp = Variable(torch.LongTensor([2])).unsqueeze(0)

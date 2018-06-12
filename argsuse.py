@@ -3,7 +3,7 @@ parser = argparse.ArgumentParser(description='H_summary')
 parser.add_argument('--gpu', type=str, default='20', help='# of machine')
 parser.add_argument('--mode', type=str, default='train', help='mode')
 parser.add_argument('--model_path', type=str, default='./models/', help='model path')
-parser.add_argument('--pkl_path', type=str, default='./data/pkl/try/', help='pkl file path')
+parser.add_argument('--pkl_path', type=str, default='./data/pkl/cnn/', help='pkl file path')
 
 
 parser.add_argument('--L2', type=float, default=0, help='weight decay')
