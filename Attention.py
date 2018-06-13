@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 from torch import optim
 import torch.nn.functional as F
+import math
 USE_CUDA = torch.cuda.is_available()
 
 
@@ -14,14 +15,16 @@ class Graph_Sent(nn.Module):
     Outs:
         sent_graph[FloatTensor]: Batch x n_sent x n_sent
     """
-    def __init__(self, d_hid):
+    def __init__(self, d_hid, dropout, max_len=5000):
         super(Graph_Sent, self).__init__()
         self.d_hid = d_hid
         self.fc = nn.Linear(d_hid, d_hid)
+        self.pe = PositionalEncoding(d_hid, dropout, max_len=max_len)
 
     def forward(self, hid_sent):
         batch_size, n_sent, d_hid = hid_sent.size()
-        transform_sent = self.fc(hid_sent.view(batch_size*n_sent, -1))
+        pos_plus_hid = self.pe(hid_sent)
+        transform_sent = self.fc(pos_plus_hid.view(batch_size*n_sent, -1))
         transform_sent = transform_sent.view(batch_size, n_sent, -1).transpose(1, 2)
         graph_W = torch.bmm(hid_sent, transform_sent) # batch x n_sent x n_sent
         col_W = torch.sum(graph_W, dim=1) # batch x n_sent
@@ -74,7 +77,7 @@ def Importance_Score(lmbd, W, D):
     #score = torch.inverse((I - lmbd*torch.bmm(W, torch.inverse(D))))
     return (1 - lmbd) * score[:, :, 0]
 
-def cal_attn(f_prev, f_curr, smoothing=1e-7):
+def cal_attn(f_prev, f_curr, smoothing=0):
     """
     Args:
         f_prev[FloatTensor]: batch x n_sent
@@ -92,12 +95,35 @@ def cal_attn(f_prev, f_curr, smoothing=1e-7):
 
     return attn_weights
 
-def test():
-    hid_sents = Variable(torch.randn(3, 3, 5))
-    f_prev = Variable(torch.randn(3, 4))
-    cur_sent = Variable(torch.randn(3, 5))
+class PositionalEncoding(nn.Module):
+    """Implement the PE function."""
+    def __init__(self, d_model, dropout, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.d_model = d_model
+        
+        # Compute the positional encodings once in log space.
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) *
+                             -(math.log(10000.0) / d_model))
 
-    graphsent = Graph_Sent(5)
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        self.register_buffer('pe', pe)
+        
+    def forward(self, x):
+        x = x + Variable(self.pe[:, :x.size(1)], 
+                         requires_grad=False)
+        return self.dropout(x)
+
+def test():
+    hid_sents = Variable(torch.randn(3, 3, 6))
+    f_prev = Variable(torch.randn(3, 4))
+    cur_sent = Variable(torch.randn(3, 6))
+
+    graphsent = Graph_Sent(6, 0.1)
     graphattn = Graph_Attn(graphsent)
     if USE_CUDA:
         graphattn = graphattn.cuda()
