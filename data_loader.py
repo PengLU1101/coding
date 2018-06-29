@@ -3,7 +3,6 @@ import torch
 import torch.utils.data as data
 import pickle
 import numpy as np
-from torch.utils.data.sampler import SubsetRandomSampler
 from preprocess import read_pkl
 
 
@@ -12,7 +11,7 @@ class Dataset(data.Dataset):
     """Custom data.Dataset compatible with data.DataLoader."""
     def __init__(self, pkl_path):
         """Reads source and target sequences from pkl files."""
-        self.corpus = read_pkl(pkl_path)
+        corpus = read_pkl(pkl_path)
         self.datalist = self.corpus["data_list"]
 
         self.token2id = self.corpus["mappings"]["token2id"]

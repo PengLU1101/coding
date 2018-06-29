@@ -22,26 +22,29 @@ else: #Python 2.7 imports
     from io import open
 
 def read_file(file):
+    gt60_list = []
     with open(file, "r", encoding='utf-8') as f:
         content = f.read().strip().split('\n\n')
         doc = content[1].strip().split("<eos>")
-        raw_tokens_doc = [sent.strip().split() + ["<eos>"] for sent in doc[:-1]]
+        raw_tokens_doc = [sent.lower().strip().split() + ["<eos>"] for sent in doc[:-1]]
         raw_tokens_doc += ["<eod>"]
         entitys = content[2].rstrip().split("\n")
         summs = content[3].rstrip().split("\n")
-        raw_token_summ = [sent.strip().split() for sent in summs]
+        raw_token_summ = [sent.lower().strip().split() + ["<eos>"] for sent in summs]
+        raw_token_summ += ["<eod>"]
         Max_lens_doc = max([len(x) for x in raw_tokens_doc])
         Max_lens_summ = max([len(x) for x in raw_token_summ])
+
         doc_summs_dict = {"doc_tokens": raw_tokens_doc,
                           "summ_tokens": raw_token_summ,
                           "maxlens_doc": Max_lens_doc,
                           "maxlens_summ": Max_lens_summ,
                           "num_sent_doc": len(raw_tokens_doc),
-                          "num_sent_summ": len(raw_token_summ)}
+                          "num_sent_summ": len(raw_token_summ)}    
     return doc_summs_dict
 
 def wordNormalize(word):
-    word = word.lower()
+    #word = word.lower()
     #word = word.replace("--", "-")
     word = re.sub("\"+", '"', word)
     word = re.sub("[0-9]{4}-[0-9]{2}-[0-9]{2}$", 'DATE_TOKEN', word)
@@ -99,7 +102,8 @@ def create_mapppings(data_list):
     mappings = {"token_frq_dict": token_frq_dict}
     doc_frq_dict = defaultdict(int)
     summ_frq_dict = defaultdict(int)
-    for data in data_list:
+    print("create frq dict...")
+    for data in tqdm(data_list):
         for value, part in data.items():
             if value == "doc_tokens":
                 sets = set([wordNormalize(word) for wordlist in part for word in wordlist])
@@ -187,13 +191,22 @@ def add_token2idx_list(data_list, mappings):
 
     return data_list
 
-def build_data_list(corp_dir):
-    fps = glob.glob(corp_dir + "*.fina")
+def build_data_list(corp_dir, item):
+    corp_path = corp_dir + item
+    fps = glob.glob(corp_path + "*.fina")
     data_list = []
-
+    exc_list = []
     for fp in tqdm(fps):
         doc_summs_dict = read_file(fp)
-        data_list.append(doc_summs_dict)
+        if doc_summs_dict["maxlens_doc"] < 60 and doc_summs_dict["num_sent_doc"] > 4 and doc_summs_dict["num_sent_doc"] < 66:
+            data_list.append(doc_summs_dict)
+        else:
+            if doc_summs_dict["maxlens_doc"] > 500:
+                exc_list.append(doc_summs_dict)
+                print(fp)
+        path = "./data/pkl/cnn_exc_" + item[:-1] + ".pkl"
+        with open(path, "wb") as f:
+            pickle.dump(exc_list, f)
 
     return data_list
 
@@ -205,15 +218,15 @@ def create_pkl(corp_dir, pkl_path, path_emb, dim=300, unk_frequence=10):
     else:
         corpus = {}
         str_list = ["training/", "validation/", "test/"]
-        path_data_list = "./data/pkl/datalist.pkl"
+        path_data_list = pkl_path + "datalist.pkl"
         if os.path.isfile(path_data_list):
+            print("loading datalists")
             with open(path_data_list, "rb") as f:
                 data_lists = pickle.load(f)
         else:
             data_lists = []
             for item in str_list:
-                corp_path = corp_dir + item
-                data_list = build_data_list(corp_path)
+                data_list = build_data_list(corp_dir, item)
                 data_lists.append(data_list)
             with open(path_data_list, "wb") as f:
                 pickle.dump(data_lists, f)
@@ -251,10 +264,10 @@ def read_pkl(path):
 
 
 def test():
-    #dir_path = "/data/rali5/Tmp/pandu/summar/cnn/final/"
-    dir_path = "./data/"
+    dir_path = "/data/rali5/Tmp/pandu/summar/cnn/final/"
+    #dir_path = "./data/"
     save_path = "./data/pkl/cnn/"
-    save_path = "./data/pkl/try/"
+    #save_path = "./data/pkl/try/"
     path_emb = "/u/lupeng/Project/code/vqvae_kb/.vector_cache/glove.6B.300d.txt"
     create_pkl(dir_path, save_path, path_emb)
     corpus = read_pkl(save_path+"train.pkl")
