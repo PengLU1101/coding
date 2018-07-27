@@ -44,3 +44,6 @@ class beam(object):
         assert hyp.dim() == 2
 
         return hyp # batch x seq_len
+    def cal_bigram(self, ref):
+        pass
+

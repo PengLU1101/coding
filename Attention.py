@@ -19,14 +19,15 @@ class Graph_Sent(nn.Module):
         super(Graph_Sent, self).__init__()
         self.d_hid = d_hid
         self.fc = nn.Linear(d_hid, d_hid)
-        self.pe = PositionalEncoding(d_hid, dropout, max_len=max_len)
 
     def forward(self, hid_sent):
         batch_size, n_sent, d_hid = hid_sent.size()
-        pos_plus_hid = self.pe(hid_sent)
+        #pos_plus_hid = self.pe(hid_sent)
+        pos_plus_hid = F.normalize(hid_sent, dim=2)
         transform_sent = self.fc(pos_plus_hid.view(batch_size*n_sent, -1))
+        #transform_sent = hid_sent
         transform_sent = transform_sent.view(batch_size, n_sent, -1).transpose(1, 2)
-        graph_W = torch.bmm(hid_sent, transform_sent) # batch x n_sent x n_sent
+        graph_W = torch.bmm(pos_plus_hid, transform_sent) # batch x n_sent x n_sent
         col_W = torch.sum(graph_W, dim=1) # batch x n_sent
         d = []
         for vec in col_W:
@@ -56,8 +57,10 @@ class Graph_Attn(nn.Module):
         f_curr = Importance_Score(self.lmbd, topic_graph_W, topic_graph_D)
         attn_weights = cal_attn(f_prev, f_curr)
         weighted_sents = hid_sents * attn_weights[:, 1:].unsqueeze(-1)
+        score, idxes = torch.max(attn_weights, dim=1)
 
-        return torch.sum(weighted_sents, dim=1).unsqueeze(1), f_curr # batch x d_hid
+
+        return torch.sum(weighted_sents, dim=1).unsqueeze(1), f_curr, idxes # batch x d_hid
         
 
 
@@ -73,9 +76,82 @@ def Importance_Score(lmbd, W, D):
     inv_D = torch.stack(inv_D, dim=0)
     score = [torch.inverse(x) for x in torch.unbind(I - lmbd*torch.bmm(W, inv_D))]
     score = torch.stack(score, dim=0)
-
+    out = (1 - lmbd) * score[:, :, 0]
     #score = torch.inverse((I - lmbd*torch.bmm(W, torch.inverse(D))))
-    return (1 - lmbd) * score[:, :, 0]
+    return out
+
+def themo_matrix(W, D, inv_D):
+    batch_size, n_sent, n_sent = W.size() 
+    d = [torch.mean(x) for x in torch.unbind(D, dim=0)]
+    d = torch.stack(d, dim=0)
+    P = torch.bmm(inv_D, W)
+    v = D / d.unsqueeze(-1)
+    u = torch.ones(batch_size, n_sent, 1)
+    Q = P - torch.bmm(u, v)
+    container = []
+    for i in range(batch_size):
+        container.append(torch.eye(n_sent, n_sent))
+    I = Variable(torch.stack(container, dim=0))
+    if USE_CUDA:
+        I = I.cuda()
+    S = I - Q
+    inv_S = [torch.inverse(x) for x in torch.unbind(S, dim=0)]
+    inv_S = torch.stack(inv_S, dim=0)
+    return inv_S
+
+def themo_attn(inv_S, v, u, h, idx):
+    batch_size, n_sent, n_sent = inv_S.size()
+    pass
+
+
+def build_H(n_sent):
+    H = [1] + [0] * (n_sent-1)
+    H = Variable(torch.Tensor(H))
+    if USE_CUDA:
+        H = H.cuda()
+    return H
+
+def swap_matrix(idx, matrix):
+    _ = torch.index_select(matrix, 0, idx)
+    tmp = torch.index_select(_, 1, idx)
+    return tmp
+
+def swap_vector(idx, vector):
+    tmp = torch.index_select(vector, 0, idx)
+    return tmp
+
+def get_idx(idx_src, idx_tgt, idx_current):
+    
+    
+    return idx_list
+
+def chunk_matrix(idx, matrix):
+    S_11 = matrix[:idx, :idx]
+    S_21 = matrix[idx:, :idx]
+    return S_11, S_21
+
+def cal_themo(S_11, S_21, h_1, v_1, v_2, u_1, u_2):
+    """
+    Function for calculate the themo weight.
+    Args:
+        S_11: [FloatTensor] 
+        S_21: [FloatTensor]
+        h_1: [FloatTensor]
+        v_1: [FloatTensor]
+        v_2: [FloatTensor]
+        u_1: [FloatTensor]
+        u_2: [FloatTensor]
+    """
+    inv_S_11 = torch.inverse(S_11)
+    G_1 = S_21 @ inv_S_11 @ h_1
+    G_2 = S_21 @ inv_S_11 @ u_1
+    h_2 = ((v_1 @ h_1 + v_2 @ G_1) @ (u_2 - G_2)) / (1 - v_2 @ u_2 + v_2 @ G_2) + G_1
+    h = torch.cat((h_1, h_2))
+    _, idx = torch.max(h_2)
+
+    return h, idx + h_1.size(1)
+
+
 
 def cal_attn(f_prev, f_curr, smoothing=0):
     """
@@ -117,6 +193,9 @@ class PositionalEncoding(nn.Module):
         x = x + Variable(self.pe[:, :x.size(1)], 
                          requires_grad=False)
         return self.dropout(x)
+
+
+
 
 def test():
     hid_sents = Variable(torch.randn(3, 3, 6))

@@ -11,7 +11,7 @@ class Dataset(data.Dataset):
     """Custom data.Dataset compatible with data.DataLoader."""
     def __init__(self, pkl_path):
         """Reads source and target sequences from pkl files."""
-        corpus = read_pkl(pkl_path)
+        self.corpus = read_pkl(pkl_path)
         self.datalist = self.corpus["data_list"]
 
         self.token2id = self.corpus["mappings"]["token2id"]
