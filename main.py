@@ -12,6 +12,7 @@ import numpy as np
 import argparse
 import pickle
 from tqdm import tqdm
+import shutil
 
 import data_loader
 import Model
@@ -30,6 +31,11 @@ val_loader = data_loader.get_loader(args.pkl_path+"val.pkl", False, 1)
 test_loader = data_loader.get_loader(args.pkl_path+"test.pkl", False, 1)
 weight = preprocess.read_pkl(args.pkl_path+"embeddings.pkl")
 
+def save_checkpoint(state, is_best, filename=args.model_path+args.gpu+"/"+'checkpoint.pth.tar'):
+    torch.save(state, filename)
+    if is_best:
+        shutil.copyfile(filename, 'model_best.pth.tar')
+
 
 
 
@@ -38,21 +44,67 @@ def main():
     model = Model.build_san_model(args.d_emb, args.d_hid, args.n_layers, args.dropout, n_voc, args.beam_num)
     #logger = Logger('./logs/'+args.gpu)
 
-    params = model.parameters()
-    model_optim = optim_custorm.NoamOpt(args.d_hid, args.factor, args.warm, torch.optim.Adam(params, lr=0, betas=(0.9, 0.98), eps=1e-9, weight_decay=args.L2))
-    print(model.embeddings)
-    model.embeddings.apply_weights(weight)
     if args.mode == "train":
+        params = model.parameters()
+        model_optim = optim_custorm.NoamOpt(args.d_hid, args.factor, args.warm, torch.optim.Adam(params, lr=0, betas=(0.9, 0.98), eps=1e-9, weight_decay=args.L2))
+        model.embeddings.apply_weights(weight)
         print("Begin training...")
         start_time = time.time()
         best_loss = 0
         for epoch_idx in range(args.max_epoch):
-            val_loss, train_loss = run_epoch(model, critorion, model_optim, epoch_idx)#, logger)
+            val_loss, train_loss, step = run_epoch(model, critorion, model_optim, epoch_idx)#, logger)
             print('-' * 70)
             print('| val_loss: %4.4f | train_loss: %4.4f' %(val_loss, train_loss))
             print('-' * 70)
             if not best_loss or best_loss > val_loss:
-                Model.save_model(args.model_path+args.gpu+"/", model)
+                best_loss = val_loss
+                is_best = True
+                #Model.save_model(args.model_path+args.gpu+"/", model)
+
+                save_checkpoint({
+                    'epoch': epoch + 1,
+                    'state_dict': model.state_dict(),
+                    'best_prec1': val_loss,
+                    'optimizer' : model_optim.optimizer.state_dict(),
+                    'step' : step
+                }, is_best)
+
+            #if epoch_idx % 5 == 0 or not epoch_idx:
+            predict(model, epoch_idx)#, logger)
+    if args.mode == "resume":
+        path_save = args.model_path+args.gpu+"/"+"checkpoint.pth.tar"
+        if os.path.isfile(path_save):
+            print("=> loading checkpoint '{}'".format(path_save))
+            checkpoint = torch.load(path_save)
+            start_epoch = checkpoint['epoch']
+            best_loss = checkpoint['best_prec1']
+            model.load_state_dict(checkpoint['state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            step = checkpoint['step']
+            print("=> loaded checkpoint '{}' (epoch {})"
+                  .format(path_save, checkpoint['epoch']))
+        else:
+            print("=> no checkpoint found at '{}'".format(args.resume))
+        print("Continue training from %d epoch." %epoch)
+
+        model_optim = optim_custorm.NoamOpt(args.d_hid, args.factor, args.warm, optimizer, step=step)
+        for epoch_idx in range(start_epoch, args.max_epoch):
+            val_loss, train_loss, step = run_epoch(model, critorion, model_optim, epoch_idx)#, logger)
+            print('-' * 70)
+            print('| val_loss: %4.4f | train_loss: %4.4f' %(val_loss, train_loss))
+            print('-' * 70)
+            if not best_loss or best_loss > val_loss:
+                best_loss = val_loss
+                is_best = True
+                #Model.save_model(args.model_path+args.gpu+"/", model)
+
+                save_checkpoint({
+                    'epoch': epoch + 1,
+                    'state_dict': model.state_dict(),
+                    'best_prec1': val_loss,
+                    'optimizer' : model_optim.optimizer.state_dict(),
+                    'step' : step
+                }, is_best)
 
             #if epoch_idx % 5 == 0 or not epoch_idx:
             predict(model, epoch_idx)#, logger)
@@ -89,7 +141,7 @@ def run_epoch(model, critorion, model_optim, epoch_idx, logger=None):
         loss = model(src_seqs, src_mask_w, src_mask_s, tgt_seqs, tgt_mask_w, tgt_mask_s)
         loss.backward()
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
-        rate = model_optim.step()
+        rate, step = model_optim.step()
         total_loss += loss.detach()
         #for p in model.parameters():
         #    print(p.grad)
@@ -104,7 +156,7 @@ def run_epoch(model, critorion, model_optim, epoch_idx, logger=None):
     val_loss = infer(model, critorion)
     #logger.scalar_summary("val_loss", val_loss.data[0], epoch_idx+1)
     #logger.scalar_summary("train_loss", (total_loss/len(train_loader)), epoch_idx+1)
-    return val_loss, total_loss/len(train_loader)
+    return val_loss, total_loss/len(train_loader), step
 
 def infer(model, critorion):
     model.eval()
