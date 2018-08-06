@@ -1,8 +1,8 @@
 class NoamOpt:
     #"Optim wrapper that implements rate."
-    def __init__(self, model_size, factor, warmup, optimizer):
+    def __init__(self, model_size, factor, warmup, optimizer, step=0):
         self.optimizer = optimizer
-        self._step = 0
+        self._step = step
         self.warmup = warmup
         self.factor = factor
         self.model_size = model_size
@@ -17,7 +17,7 @@ class NoamOpt:
             p['lr'] = rate
         self._rate = rate
         self.optimizer.step()
-        return rate
+        return rate, self._step
         
     def rate(self, step = None):
         #"Implement `lrate` above"
